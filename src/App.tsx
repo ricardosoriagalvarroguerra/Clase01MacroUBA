@@ -15,6 +15,11 @@ import { PibArgentinaRealSlide } from '@/slides/PibArgentinaRealSlide'
 import { PibPerCapitaSlide } from '@/slides/PibPerCapitaSlide'
 import { ArgentinaGdpSlide } from '@/slides/ArgentinaGdpSlide'
 import { CountriesGdpSlide } from '@/slides/CountriesGdpSlide'
+import { LaborStructureSlide } from '@/slides/LaborStructureSlide'
+import { LaborDefinitionsSlide } from '@/slides/LaborDefinitionsSlide'
+import { LaborRatesSlide } from '@/slides/LaborRatesSlide'
+import { LaborQuizSlide } from '@/slides/LaborQuizSlide'
+import { ArgentinaUnemploymentSlide } from '@/slides/ArgentinaUnemploymentSlide'
 
 interface SlideDef {
   id: string
@@ -39,6 +44,15 @@ const slides: SlideDef[] = [
   { id: 'pib-per-capita', render: () => <PibPerCapitaSlide /> },
   { id: 'argentina-gdp', render: () => <ArgentinaGdpSlide /> },
   { id: 'countries-gdp', render: () => <CountriesGdpSlide /> },
+  {
+    id: 'section-02',
+    render: () => <SectionTitleSlide number="02" title="Mercado de trabajo" />,
+  },
+  { id: 'labor-structure', render: (isActive) => <LaborStructureSlide isActive={isActive} /> },
+  { id: 'labor-definitions', render: () => <LaborDefinitionsSlide /> },
+  { id: 'labor-rates', render: (isActive) => <LaborRatesSlide isActive={isActive} /> },
+  { id: 'labor-quiz', render: (isActive) => <LaborQuizSlide isActive={isActive} /> },
+  { id: 'argentina-unemployment', render: () => <ArgentinaUnemploymentSlide /> },
 ]
 
 export default function App() {
