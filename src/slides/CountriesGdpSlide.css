@@ -135,7 +135,12 @@
   opacity: 0.8;
 }
 
-/* Toggle (México) */
+/* Toggles */
+.cgdp-card__toggles {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .cgdp-toggle {
   display: inline-flex;
   background: var(--color-surface);
@@ -143,6 +148,9 @@
   border-radius: 999px;
   padding: 2px;
   align-self: flex-start;
+}
+.cgdp-toggle[data-disabled='true'] {
+  opacity: 0.45;
 }
 .cgdp-toggle__btn {
   padding: 3px 10px;
@@ -159,8 +167,11 @@
   background: var(--color-primary);
   color: #fff;
 }
-.cgdp-toggle__btn:hover:not([data-active='true']) {
+.cgdp-toggle__btn:hover:not([data-active='true']):not(:disabled) {
   color: var(--color-text);
+}
+.cgdp-toggle__btn:disabled {
+  cursor: not-allowed;
 }
 
 /* Chart */

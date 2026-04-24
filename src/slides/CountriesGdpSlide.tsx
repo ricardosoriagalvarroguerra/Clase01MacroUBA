@@ -2,22 +2,24 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import {
   countriesGdp,
-  mexicoByExpenditure,
-  mexicoBySector,
-  mexExpenditureKeys,
-  mexExpenditureLabels,
-  mexExpenditureColors,
-  mexSectorKeys,
-  mexSectorColors,
+  getExpenditureData,
+  getSectorData,
+  expenditureKeys,
+  expenditureLabels,
+  expenditureColors,
+  sectorKeys,
+  sectorColors,
   type CountrySeries,
 } from '@/data/countriesGdp'
 import './CountriesGdpSlide.css'
 
-type MexMode = 'total' | 'gasto' | 'sector'
+type ViewMode = 'total' | 'gasto' | 'sector'
+type Unit = 'usd' | 'pct'
 
 interface ChartDeps {
   country: CountrySeries
-  mexMode?: MexMode
+  mode?: ViewMode
+  unit?: Unit
   compact: boolean
 }
 
@@ -45,28 +47,28 @@ function formatUsd(v: number, compact: boolean) {
   return d3.format(',.0f')(v)
 }
 
-function GdpChart({ country, mexMode = 'total', compact }: ChartDeps) {
+function GdpChart({ country, mode = 'total', unit = 'usd', compact }: ChartDeps) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const size = useSize(wrapRef)
   const [tip, setTip] = useState<{ x: number; y: number; year: number; key: string; value: number; pct: number } | null>(null)
 
   const config = useMemo(() => {
-    if (country.id === 'mex' && mexMode === 'gasto') {
+    if (mode === 'gasto') {
       return {
-        data: mexicoByExpenditure as unknown as Array<Record<string, number>>,
-        keys: [...mexExpenditureKeys] as string[],
-        colors: mexExpenditureColors,
-        labels: mexExpenditureLabels,
+        data: getExpenditureData(country.id) as unknown as Array<Record<string, number>>,
+        keys: [...expenditureKeys] as string[],
+        colors: expenditureColors as Record<string, string>,
+        labels: expenditureLabels as Record<string, string>,
         stacked: true,
       }
     }
-    if (country.id === 'mex' && mexMode === 'sector') {
-      const lbls: Record<string, string> = Object.fromEntries(mexSectorKeys.map((k) => [k, k]))
+    if (mode === 'sector') {
+      const lbls: Record<string, string> = Object.fromEntries(sectorKeys.map((k) => [k, k]))
       return {
-        data: mexicoBySector as unknown as Array<Record<string, number>>,
-        keys: mexSectorKeys,
-        colors: mexSectorColors,
+        data: getSectorData(country.id) as unknown as Array<Record<string, number>>,
+        keys: [...sectorKeys] as string[],
+        colors: sectorColors,
         labels: lbls,
         stacked: true,
       }
@@ -78,7 +80,7 @@ function GdpChart({ country, mexMode = 'total', compact }: ChartDeps) {
       labels: { gdp: 'PIB (USD MM)' } as Record<string, string>,
       stacked: false,
     }
-  }, [country, mexMode])
+  }, [country, mode])
 
   useEffect(() => {
     if (!svgRef.current) return
@@ -102,15 +104,28 @@ function GdpChart({ country, mexMode = 'total', compact }: ChartDeps) {
       yearTotals[row.year] = config.keys.reduce((acc, k) => acc + Math.max(0, row[k] as number), 0)
     }
 
+    // Si unit === 'pct' y estamos en stacked, transformamos a % del total del año
+    const workingData =
+      unit === 'pct' && config.stacked
+        ? config.data.map((row) => {
+            const out: Record<string, number> = { year: row.year }
+            const t = yearTotals[row.year] || 1
+            for (const k of config.keys) {
+              out[k] = ((row[k] as number) / t) * 100
+            }
+            return out
+          })
+        : config.data
+
     const stack = d3.stack<Record<string, number>>().keys(config.keys).offset(d3.stackOffsetDiverging)
-    const series = stack(config.data)
+    const series = stack(workingData)
 
     const yMin = d3.min(series, (s) => d3.min(s, (d) => d[0])) ?? 0
     const yMax = d3.max(series, (s) => d3.max(s, (d) => d[1])) ?? 0
 
     const x = d3
       .scaleBand<number>()
-      .domain(config.data.map((d) => d.year))
+      .domain(workingData.map((d) => d.year as number))
       .range([0, width])
       .padding(0.22)
 
@@ -146,13 +161,16 @@ function GdpChart({ country, mexMode = 'total', compact }: ChartDeps) {
       .attr('y1', y(0))
       .attr('y2', y(0))
 
+    const yFmt = (v: number) =>
+      unit === 'pct' && config.stacked ? `${d3.format('.0f')(v)}%` : formatUsd(v, compact)
+
     g.append('g')
       .attr('class', 'cgdp-axis cgdp-axis--y')
       .call(
         d3
           .axisLeft(y)
           .tickValues(yTicks)
-          .tickFormat((d) => formatUsd(d as number, compact))
+          .tickFormat((d) => yFmt(d as number))
           .tickSize(0),
       )
       .call((gAxis) => gAxis.select('.domain').remove())
@@ -162,7 +180,7 @@ function GdpChart({ country, mexMode = 'total', compact }: ChartDeps) {
         .attr('class', 'cgdp-y-label')
         .attr('transform', `translate(-46,${height / 2}) rotate(-90)`)
         .attr('text-anchor', 'middle')
-        .text('USD mil millones (corrientes)')
+        .text(unit === 'pct' && config.stacked ? '% del total anual' : 'USD mil millones (corrientes)')
     }
 
     const groups = g
@@ -209,7 +227,7 @@ function GdpChart({ country, mexMode = 'total', compact }: ChartDeps) {
         setTip(null)
         d3.select(this).attr('opacity', 1)
       })
-  }, [config, size, compact])
+  }, [config, size, compact, unit])
 
   return (
     <div className="cgdp-chart" ref={wrapRef}>
@@ -239,8 +257,10 @@ interface CardProps {
 }
 
 function CountryCard({ country, onExpand }: CardProps) {
-  const [mexMode, setMexMode] = useState<MexMode>('total')
-  const isMex = country.id === 'mex'
+  const [mode, setMode] = useState<ViewMode>('total')
+  const [unit, setUnit] = useState<Unit>('usd')
+  const stacked = mode !== 'total'
+  const effectiveUnit = stacked ? unit : 'usd'
   const last = country.data[country.data.length - 1]
   const first = country.data[0]
   const growth = ((last.gdp / first.gdp - 1) * 100).toFixed(1)
@@ -269,22 +289,40 @@ function CountryCard({ country, onExpand }: CardProps) {
         </button>
       </header>
 
-      {isMex && (
-        <div className="cgdp-toggle" role="tablist">
-          {(['total', 'gasto', 'sector'] as MexMode[]).map((m) => (
+      <div className="cgdp-card__toggles">
+        <div className="cgdp-toggle" role="tablist" aria-label="Vista">
+          {(['total', 'gasto', 'sector'] as ViewMode[]).map((m) => (
             <button
               key={m}
               className="cgdp-toggle__btn"
-              data-active={mexMode === m}
-              onClick={() => setMexMode(m)}
+              data-active={mode === m}
+              onClick={() => setMode(m)}
             >
-              {m === 'total' ? 'Total' : m === 'gasto' ? 'Por gasto' : 'Por sector'}
+              {m === 'total' ? 'Total' : m === 'gasto' ? 'Gasto' : 'Sector'}
             </button>
           ))}
         </div>
-      )}
+        <div className="cgdp-toggle" role="tablist" aria-label="Unidad" data-disabled={!stacked}>
+          <button
+            className="cgdp-toggle__btn"
+            data-active={effectiveUnit === 'usd'}
+            onClick={() => setUnit('usd')}
+            disabled={!stacked}
+          >
+            USD
+          </button>
+          <button
+            className="cgdp-toggle__btn"
+            data-active={effectiveUnit === 'pct'}
+            onClick={() => setUnit('pct')}
+            disabled={!stacked}
+          >
+            %
+          </button>
+        </div>
+      </div>
 
-      <GdpChart country={country} mexMode={isMex ? mexMode : 'total'} compact />
+      <GdpChart country={country} mode={mode} unit={effectiveUnit} compact />
 
       <footer className="cgdp-card__foot">
         <span>{country.source}</span>
@@ -299,8 +337,10 @@ interface ModalProps {
 }
 
 function FullscreenModal({ country, onClose }: ModalProps) {
-  const [mexMode, setMexMode] = useState<MexMode>('total')
-  const isMex = country.id === 'mex'
+  const [mode, setMode] = useState<ViewMode>('total')
+  const [unit, setUnit] = useState<Unit>('usd')
+  const stacked = mode !== 'total'
+  const effectiveUnit = stacked ? unit : 'usd'
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -315,11 +355,11 @@ function FullscreenModal({ country, onClose }: ModalProps) {
     }
   }, [onClose])
 
-  const keys =
-    isMex && mexMode === 'gasto'
-      ? mexExpenditureKeys.map((k) => ({ k: k as string, label: mexExpenditureLabels[k], color: mexExpenditureColors[k] }))
-      : isMex && mexMode === 'sector'
-        ? mexSectorKeys.map((k) => ({ k, label: k, color: mexSectorColors[k] }))
+  const legendKeys =
+    mode === 'gasto'
+      ? expenditureKeys.map((k) => ({ k: k as string, label: expenditureLabels[k], color: expenditureColors[k] }))
+      : mode === 'sector'
+        ? sectorKeys.map((k) => ({ k: k as string, label: k as string, color: sectorColors[k] }))
         : []
 
   return (
@@ -327,27 +367,43 @@ function FullscreenModal({ country, onClose }: ModalProps) {
       <div className="cgdp-modal__panel" onClick={(e) => e.stopPropagation()}>
         <header className="cgdp-modal__head">
           <div>
-            <p className="cgdp-modal__eyebrow">PIB · {country.source}</p>
+            <p className="cgdp-modal__eyebrow">PIB USD corrientes · {country.source}</p>
             <h2 className="cgdp-modal__title">
               <span className="cgdp-modal__flag">{country.flag}</span>
               {country.name} · {country.data[0].year}–{country.data[country.data.length - 1].year}
             </h2>
           </div>
           <div className="cgdp-modal__actions">
-            {isMex && (
-              <div className="cgdp-toggle" role="tablist">
-                {(['total', 'gasto', 'sector'] as MexMode[]).map((m) => (
-                  <button
-                    key={m}
-                    className="cgdp-toggle__btn"
-                    data-active={mexMode === m}
-                    onClick={() => setMexMode(m)}
-                  >
-                    {m === 'total' ? 'Total' : m === 'gasto' ? 'Por gasto' : 'Por sector'}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="cgdp-toggle" role="tablist" aria-label="Vista">
+              {(['total', 'gasto', 'sector'] as ViewMode[]).map((m) => (
+                <button
+                  key={m}
+                  className="cgdp-toggle__btn"
+                  data-active={mode === m}
+                  onClick={() => setMode(m)}
+                >
+                  {m === 'total' ? 'Total' : m === 'gasto' ? 'Por gasto' : 'Por sector'}
+                </button>
+              ))}
+            </div>
+            <div className="cgdp-toggle" role="tablist" aria-label="Unidad" data-disabled={!stacked}>
+              <button
+                className="cgdp-toggle__btn"
+                data-active={effectiveUnit === 'usd'}
+                onClick={() => setUnit('usd')}
+                disabled={!stacked}
+              >
+                USD MM
+              </button>
+              <button
+                className="cgdp-toggle__btn"
+                data-active={effectiveUnit === 'pct'}
+                onClick={() => setUnit('pct')}
+                disabled={!stacked}
+              >
+                % del total
+              </button>
+            </div>
             <button className="cgdp-modal__close" onClick={onClose} aria-label="Cerrar">
               ×
             </button>
@@ -355,12 +411,12 @@ function FullscreenModal({ country, onClose }: ModalProps) {
         </header>
 
         <div className="cgdp-modal__chart">
-          <GdpChart country={country} mexMode={mexMode} compact={false} />
+          <GdpChart country={country} mode={mode} unit={effectiveUnit} compact={false} />
         </div>
 
-        {keys.length > 0 && (
+        {legendKeys.length > 0 && (
           <div className="cgdp-legend">
-            {keys.map(({ k, label, color }) => (
+            {legendKeys.map(({ k, label, color }) => (
               <div key={k} className="cgdp-legend__item">
                 <span className="cgdp-legend__swatch" style={{ background: color }} />
                 <span className="cgdp-legend__label">{label}</span>
@@ -386,8 +442,8 @@ export function CountriesGdpSlide() {
         <p className="cgdp-slide__eyebrow">PIB comparado · 2015 – 2024</p>
         <h2 className="cgdp-slide__title">PIB nominal — selección de países</h2>
         <p className="cgdp-slide__lead">
-          Seis economías contrastadas. Para México también se desagrega por gasto y sector. Click en un
-          card para verlo en pantalla completa.
+          Seis economías contrastadas con desagregación por componente del gasto (C + G + FBKF + ΔExist + X−M)
+          y por sector productivo (VAB). Todos los valores en USD corrientes. Click en un card para verlo en pantalla completa.
         </p>
       </header>
 
