@@ -14,6 +14,7 @@ import { PibArgentinaNominalSlide } from '@/slides/PibArgentinaNominalSlide'
 import { PibArgentinaRealSlide } from '@/slides/PibArgentinaRealSlide'
 import { PibPerCapitaSlide } from '@/slides/PibPerCapitaSlide'
 import { ArgentinaGdpSlide } from '@/slides/ArgentinaGdpSlide'
+import { CountriesGdpSlide } from '@/slides/CountriesGdpSlide'
 
 interface SlideDef {
   id: string
@@ -37,6 +38,7 @@ const slides: SlideDef[] = [
   { id: 'pib-argentina-real', render: () => <PibArgentinaRealSlide /> },
   { id: 'pib-per-capita', render: () => <PibPerCapitaSlide /> },
   { id: 'argentina-gdp', render: () => <ArgentinaGdpSlide /> },
+  { id: 'countries-gdp', render: () => <CountriesGdpSlide /> },
 ]
 
 export default function App() {
